@@ -6,4 +6,4 @@ edition = "2024"
 [dependencies]
 color-eyre = "0.6.5"
 crossterm = "0.29.0"
-ratatui = "0.30.0"
+ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
