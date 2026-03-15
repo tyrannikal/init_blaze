@@ -1,3 +1,4 @@
+use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{DefaultTerminal, Frame};
 use std::io;
 
@@ -10,8 +11,12 @@ fn main() -> color_eyre::Result<()> {
 fn app(terminal: &mut DefaultTerminal) -> io::Result<()> {
     loop {
         terminal.draw(render)?;
-        if crossterm::event::read()?.is_key_press() {
-            break Ok(());
+        match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
+                KeyCode::Char('q') => break Ok(()),
+                _ => {}
+            },
+            _ => {}
         }
     }
 }
