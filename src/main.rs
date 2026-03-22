@@ -10,6 +10,31 @@ use ratatui::{
     widgets::{Block, Paragraph},
 };
 
+fn main() -> io::Result<()> {
+    ratatui::run(|terminal| App::default().run(terminal))
+}
+
+#[derive(Debug, Default)]
+struct ProjectConfig {
+    project_type: Option<ProjectType>,
+    vcs: Option<Vcs>,
+    languages: Vec<Language>,
+}
+
+#[derive(Debug, Default, VariantArray, Display)]
+enum WizardStep {
+    #[default]
+    #[strum(to_string = "Project Type")]
+    ProjectType,
+    #[strum(to_string = "Version Control System")]
+    Vcs,
+    Languages,
+    Database,
+    Remotes,
+    Extras,
+    Summary,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum ProjectType {
     New,
@@ -26,40 +51,22 @@ enum Vcs {
     None,
 }
 
-#[derive(Debug, Default)]
-struct ProjectConfig {
-    project_type: Option<ProjectType>,
-    vcs: Option<Vcs>,
-}
-
-fn main() -> io::Result<()> {
-    ratatui::run(|terminal| App::default().run(terminal))
-}
-
-#[derive(Debug, Default, VariantArray)]
-enum WizardStep {
-    #[default]
-    ProjectType,
-    Vcs,
-    Languages,
-    Database,
-    Remotes,
-    Extras,
-    Summary,
-}
-
-impl WizardStep {
-    fn title(&self) -> &str {
-        match self {
-            WizardStep::ProjectType => "Project Type",
-            WizardStep::Vcs => "Version Control System",
-            WizardStep::Languages => "Languages",
-            WizardStep::Database => "Database",
-            WizardStep::Remotes => "Remotes",
-            WizardStep::Extras => "Extras",
-            WizardStep::Summary => "Summary",
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
+enum Language {
+    Rust,
+    Go,
+    Python,
+    JavaScript,
+    TypeScript,
+    Java,
+    #[strum(to_string = "C#")]
+    CSharp,
+    #[strum(to_string = "C/C++")]
+    Cpp,
+    Ruby,
+    Zig,
+    Haskell,
+    Lua,
 }
 
 #[derive(Debug, Default)]
@@ -67,6 +74,7 @@ struct App {
     step_index: usize,
     cursor: usize,
     config: ProjectConfig,
+    selected_languages: Vec<Language>,
     exit: bool,
 }
 
@@ -85,15 +93,20 @@ impl App {
                 .areas(frame.area());
 
         // Wizard panel (left 2/3)
-        let title = Line::from(format!(" cinderbox — {} ", self.current_step().title())).bold();
-        let instructions = Line::from(vec![
-            " Back ".into(),
-            "<Left/H> ".blue().bold(),
-            " Next ".into(),
-            "<Right/L> ".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]);
+        let title = Line::from(format!(" cinderbox — {} ", self.current_step())).bold();
+        let mut instruction_spans = vec![" Back ".into(), "<Left/H> ".blue().bold()];
+        if matches!(self.current_step(), WizardStep::Languages) {
+            instruction_spans.push(" Toggle ".into());
+            instruction_spans.push("<Enter> ".blue().bold());
+            instruction_spans.push(" Confirm ".into());
+            instruction_spans.push("<Right/L> ".blue().bold());
+        } else {
+            instruction_spans.push(" Next ".into());
+            instruction_spans.push("<Right/L> ".blue().bold());
+        }
+        instruction_spans.push(" Quit ".into());
+        instruction_spans.push("<Q> ".blue().bold());
+        let instructions = Line::from(instruction_spans);
 
         let wizard_block = Block::bordered()
             .title(title.centered())
@@ -123,11 +136,31 @@ impl App {
             .join("\n")
     }
 
+    fn render_multi_select_list<T: std::fmt::Display + PartialEq>(
+        &self,
+        variants: &[T],
+        selected: &[T],
+    ) -> String {
+        variants
+            .iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let cursor = if i == self.cursor { "▸ " } else { "  " };
+                let check = if selected.contains(v) { "[x]" } else { "[ ]" };
+                format!("{cursor}{check} {v}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn step_content(&self) -> String {
         match self.current_step() {
             WizardStep::ProjectType => self.render_select_list(ProjectType::VARIANTS),
             WizardStep::Vcs => self.render_select_list(Vcs::VARIANTS),
-            _ => format!("Step: {}", self.current_step().title()),
+            WizardStep::Languages => {
+                self.render_multi_select_list(Language::VARIANTS, &self.selected_languages)
+            }
+            _ => format!("Step: {}", self.current_step()),
         }
     }
 
@@ -142,6 +175,18 @@ impl App {
         match &self.config.vcs {
             Some(vcs) => lines.push(format!("VCS: {vcs}")),
             None => lines.push("VCS: —".to_string()),
+        }
+
+        if self.config.languages.is_empty() {
+            lines.push("Languages: —".to_string());
+        } else {
+            let langs: Vec<String> = self
+                .config
+                .languages
+                .iter()
+                .map(|l| l.to_string())
+                .collect();
+            lines.push(format!("Languages: {}", langs.join(", ")));
         }
 
         if lines.iter().all(|l| l.ends_with('—')) {
@@ -159,7 +204,7 @@ impl App {
                 KeyCode::Left | KeyCode::Char('h') => self.prev(),
                 KeyCode::Down | KeyCode::Char('j') => self.cursor_down(),
                 KeyCode::Up | KeyCode::Char('k') => self.cursor_up(),
-                KeyCode::Enter => self.select(),
+                KeyCode::Enter | KeyCode::Char(' ') => self.select(),
                 _ => {}
             },
             _ => {}
@@ -175,6 +220,7 @@ impl App {
         match self.current_step() {
             WizardStep::ProjectType => ProjectType::VARIANTS.len().saturating_sub(1),
             WizardStep::Vcs => Vcs::VARIANTS.len().saturating_sub(1),
+            WizardStep::Languages => Language::VARIANTS.len().saturating_sub(1),
             _ => 0,
         }
     }
@@ -192,6 +238,10 @@ impl App {
     fn select_or_next(&mut self) {
         match self.current_step() {
             WizardStep::ProjectType | WizardStep::Vcs => self.select(),
+            WizardStep::Languages => {
+                self.config.languages = self.selected_languages.clone();
+                self.next();
+            }
             _ => self.next(),
         }
     }
@@ -205,6 +255,14 @@ impl App {
             WizardStep::Vcs => {
                 self.config.vcs = Some(Vcs::VARIANTS[self.cursor]);
                 self.next();
+            }
+            WizardStep::Languages => {
+                let lang = Language::VARIANTS[self.cursor];
+                if let Some(pos) = self.selected_languages.iter().position(|l| *l == lang) {
+                    self.selected_languages.remove(pos);
+                } else {
+                    self.selected_languages.push(lang);
+                }
             }
             _ => {}
         }
@@ -222,6 +280,10 @@ impl App {
                 .vcs
                 .and_then(|vcs| Vcs::VARIANTS.iter().position(|v| *v == vcs))
                 .unwrap_or(0),
+            WizardStep::Languages => {
+                self.selected_languages = self.config.languages.clone();
+                0
+            }
             _ => 0,
         };
     }
