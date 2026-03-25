@@ -231,7 +231,7 @@ impl App {
     }
 
     fn config_summary(&self) -> String {
-        let lines = self.get_summary();
+        let lines = self.new_get_summary();
 
         if lines.iter().all(|l| l.ends_with('—')) {
             return "No selections yet.".to_string();
@@ -240,13 +240,7 @@ impl App {
         lines.join("\n")
     }
 
-    fn final_summary(&self) -> String {
-        let lines = self.get_summary();
-
-        format!("cinderbox — Project Configuration\n{}", lines.join("\n"))
-    }
-
-    fn get_summary(&self) -> [String; WizardStep::VARIANTS.len() - 1] {
+    fn new_get_summary(&self) -> [String; 6] {
         let c = &self.config;
         [
             format!(
@@ -264,22 +258,58 @@ impl App {
         ]
     }
 
+    fn format_config_line(label: &str, value: &str) -> String {
+        format!("  {label}: {value}")
+    }
+
     fn format_config_list<T: std::fmt::Display>(label: &str, items: &[T], none: &str) -> String {
         if items.is_empty() {
-            format!("{label}: {none}")
+            format!("  {label}: {none}")
         } else {
             let joined: Vec<String> = items.iter().map(|i| i.to_string()).collect();
-            format!("{label}: {}", joined.join(", "))
+            format!("  {label}: {}", joined.join(", "))
         }
     }
 
     fn summary_content(&self) -> String {
+        let c = &self.config;
         let mut lines = vec!["Review your selections:\n".to_string()];
 
         lines.push(String::new());
         lines.push("Press Enter to confirm.".to_string());
 
         lines.join("\n")
+    }
+
+    fn final_summary(&self) -> String {
+        let c = &self.config;
+        let lines = self.new_get_summary();
+
+        "cinderbox — Project Configuration\n" + lines.join("\n")
+    }
+
+    fn get_summary(config: &ProjectConfig, lines: &mut Vec<String>) {
+        lines.push(Self::format_config_line(
+            "Project Type",
+            &config
+                .project_type
+                .map_or("—".to_string(), |v| v.to_string()),
+        ));
+        lines.push(Self::format_config_line(
+            "VCS",
+            &config.vcs.map_or("—".to_string(), |v| v.to_string()),
+        ));
+        lines.push(Self::format_config_list(
+            "Languages",
+            &config.languages,
+            "—",
+        ));
+        lines.push(Self::format_config_line(
+            "Database",
+            &config.database.map_or("—".to_string(), |v| v.to_string()),
+        ));
+        lines.push(Self::format_config_list("Remotes", &config.remotes, "—"));
+        lines.push(Self::format_config_list("Extras", &config.extras, "—"));
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
