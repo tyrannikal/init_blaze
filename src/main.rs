@@ -11,7 +11,12 @@ use ratatui::{
 };
 
 fn main() -> io::Result<()> {
-    ratatui::run(|terminal| App::default().run(terminal))
+    let mut app = App::default();
+    ratatui::run(|terminal| app.run(terminal))?;
+    if app.confirmed {
+        println!("{}", app.final_summary());
+    }
+    Ok(())
 }
 
 #[derive(Debug, Default)]
@@ -121,6 +126,7 @@ struct App {
     selected_languages: Vec<Language>,
     selected_remotes: Vec<Remote>,
     selected_extras: Vec<Extra>,
+    confirmed: bool,
     exit: bool,
 }
 
@@ -141,22 +147,26 @@ impl App {
         // Wizard panel (left 2/3)
         let title = Line::from(format!(" cinderbox — {} ", self.current_step())).bold();
         let mut instruction_spans = vec![" Back ".into(), "<Left/H> ".blue().bold()];
-        if matches!(
-            self.current_step(),
-            WizardStep::Languages | WizardStep::Remotes | WizardStep::Extras
-        ) {
-            instruction_spans.push(" Toggle ".into());
-            instruction_spans.push("<Enter> ".blue().bold());
-            instruction_spans.push(" Confirm ".into());
-            instruction_spans.push("<Right/L> ".blue().bold());
-        } else {
-            instruction_spans.push(" Next ".into());
-            instruction_spans.push("<Right/L> ".blue().bold());
+        match self.current_step() {
+            WizardStep::Languages | WizardStep::Remotes | WizardStep::Extras => {
+                instruction_spans.push(" Toggle ".into());
+                instruction_spans.push("<Enter> ".blue().bold());
+                instruction_spans.push(" Confirm ".into());
+                instruction_spans.push("<Right/L> ".blue().bold());
+            }
+            WizardStep::Summary => {
+                instruction_spans.push(" Confirm ".into());
+                instruction_spans.push("<Enter> ".blue().bold());
+            }
+            _ => {
+                instruction_spans.push(" Next ".into());
+                instruction_spans.push("<Right/L> ".blue().bold());
+            }
         }
         instruction_spans.push(" Quit ".into());
         instruction_spans.push("<Q> ".blue().bold());
-        let instructions = Line::from(instruction_spans);
 
+        let instructions = Line::from(instruction_spans);
         let wizard_block = Block::bordered()
             .title(title.centered())
             .title_bottom(instructions.centered());
@@ -216,59 +226,96 @@ impl App {
             WizardStep::Extras => {
                 self.render_multi_select_list(Extra::VARIANTS, &self.selected_extras)
             }
-            _ => format!("Step: {}", self.current_step()),
+            WizardStep::Summary => self.summary_content(),
         }
     }
 
     fn config_summary(&self) -> String {
-        let mut lines = Vec::new();
-
-        match &self.config.project_type {
-            Some(pt) => lines.push(format!("Type: {pt}")),
-            None => lines.push("Type: —".to_string()),
-        }
-
-        match &self.config.vcs {
-            Some(vcs) => lines.push(format!("VCS: {vcs}")),
-            None => lines.push("VCS: —".to_string()),
-        }
-
-        if self.config.languages.is_empty() {
-            lines.push("Languages: —".to_string());
-        } else {
-            let langs: Vec<String> = self
-                .config
-                .languages
-                .iter()
-                .map(|l| l.to_string())
-                .collect();
-            lines.push(format!("Languages: {}", langs.join(", ")));
-        }
-
-        match &self.config.database {
-            Some(db) => lines.push(format!("Database: {db}")),
-            None => lines.push("Database: —".to_string()),
-        }
-
-        if self.config.remotes.is_empty() {
-            lines.push("Remotes: —".to_string());
-        } else {
-            let remotes: Vec<String> = self.config.remotes.iter().map(|r| r.to_string()).collect();
-            lines.push(format!("Remotes: {}", remotes.join(", ")));
-        }
-
-        if self.config.extras.is_empty() {
-            lines.push("Extras: —".to_string());
-        } else {
-            let extras: Vec<String> = self.config.extras.iter().map(|e| e.to_string()).collect();
-            lines.push(format!("Extras: {}", extras.join(", ")));
-        }
+        let c = &self.config;
+        let lines = [
+            format!(
+                "Type: {}",
+                c.project_type.map_or("—".to_string(), |v| v.to_string())
+            ),
+            format!("VCS: {}", c.vcs.map_or("—".to_string(), |v| v.to_string())),
+            Self::format_config_list("Languages", &c.languages, "—")
+                .trim_start()
+                .to_string(),
+            format!(
+                "Database: {}",
+                c.database.map_or("—".to_string(), |v| v.to_string())
+            ),
+            Self::format_config_list("Remotes", &c.remotes, "—")
+                .trim_start()
+                .to_string(),
+            Self::format_config_list("Extras", &c.extras, "—")
+                .trim_start()
+                .to_string(),
+        ];
 
         if lines.iter().all(|l| l.ends_with('—')) {
             return "No selections yet.".to_string();
         }
 
         lines.join("\n")
+    }
+
+    fn format_config_line(label: &str, value: &str) -> String {
+        format!("  {label}: {value}")
+    }
+
+    fn format_config_list<T: std::fmt::Display>(label: &str, items: &[T], none: &str) -> String {
+        if items.is_empty() {
+            format!("  {label}: {none}")
+        } else {
+            let joined: Vec<String> = items.iter().map(|i| i.to_string()).collect();
+            format!("  {label}: {}", joined.join(", "))
+        }
+    }
+
+    fn summary_content(&self) -> String {
+        let c = &self.config;
+        let mut lines = vec!["Review your selections:\n".to_string()];
+
+        Self::get_summary(c, &mut lines);
+
+        lines.push(String::new());
+        lines.push("Press Enter to confirm.".to_string());
+
+        lines.join("\n")
+    }
+
+    fn final_summary(&self) -> String {
+        let c = &self.config;
+        let mut lines = vec!["cinderbox — Project Configuration\n".to_string()];
+
+        Self::get_summary(c, &mut lines);
+
+        lines.join("\n")
+    }
+
+    fn get_summary(config: &ProjectConfig, lines: &mut Vec<String>) {
+        lines.push(Self::format_config_line(
+            "Project Type",
+            &config
+                .project_type
+                .map_or("—".to_string(), |v| v.to_string()),
+        ));
+        lines.push(Self::format_config_line(
+            "VCS",
+            &config.vcs.map_or("—".to_string(), |v| v.to_string()),
+        ));
+        lines.push(Self::format_config_list(
+            "Languages",
+            &config.languages,
+            "—",
+        ));
+        lines.push(Self::format_config_line(
+            "Database",
+            &config.database.map_or("—".to_string(), |v| v.to_string()),
+        ));
+        lines.push(Self::format_config_list("Remotes", &config.remotes, "—"));
+        lines.push(Self::format_config_list("Extras", &config.extras, "—"));
     }
 
     fn handle_events(&mut self) -> io::Result<()> {
@@ -316,7 +363,7 @@ impl App {
                 self.config.extras = self.selected_extras.clone();
                 self.next();
             }
-            _ => self.next(),
+            WizardStep::Summary => {}
         }
     }
 
@@ -358,7 +405,10 @@ impl App {
                     self.selected_extras.push(extra);
                 }
             }
-            _ => {}
+            WizardStep::Summary => {
+                self.confirmed = true;
+                self.exit = true;
+            }
         }
     }
 
