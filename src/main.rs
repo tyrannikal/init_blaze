@@ -1,5 +1,5 @@
 use std::io;
-use strum::{Display, EnumCount, VariantArray};
+use strum::{Display, VariantArray};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
@@ -46,24 +46,24 @@ enum WizardStep {
 impl WizardStep {
     fn option_count(&self) -> usize {
         match self {
-            Self::ProjectType => ProjectType::COUNT,
-            Self::Vcs => Vcs::COUNT,
-            Self::Languages => Language::COUNT,
-            Self::Database => Database::COUNT,
-            Self::Remotes => Remote::COUNT,
-            Self::Extras => Extra::COUNT,
+            Self::ProjectType => ProjectType::VARIANTS.len(),
+            Self::Vcs => Vcs::VARIANTS.len(),
+            Self::Languages => Language::VARIANTS.len(),
+            Self::Database => Database::VARIANTS.len(),
+            Self::Remotes => Remote::VARIANTS.len(),
+            Self::Extras => Extra::VARIANTS.len(),
             Self::Summary => 0,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, VariantArray, EnumCount, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum ProjectType {
     New,
     Existing,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, VariantArray, EnumCount, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum Vcs {
     Git,
     #[strum(to_string = "Jujutsu (jj)")]
@@ -73,7 +73,7 @@ enum Vcs {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, VariantArray, EnumCount, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum Language {
     Rust,
     Go,
@@ -91,7 +91,7 @@ enum Language {
     Lua,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, VariantArray, EnumCount, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum Database {
     PostgreSQL,
     MySQL,
@@ -101,7 +101,7 @@ enum Database {
     None,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, VariantArray, EnumCount, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum Remote {
     GitHub,
     Codeberg,
@@ -111,7 +111,7 @@ enum Remote {
     SelfHosted,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, VariantArray, EnumCount, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, VariantArray, Display)]
 enum Extra {
     #[strum(to_string = ".gitignore")]
     Gitignore,
@@ -275,6 +275,8 @@ impl App {
 
     fn summary_content(&self) -> String {
         let mut lines = vec!["Review your selections:\n".to_string()];
+
+        //TODO: put something useful here
 
         lines.push(String::new());
         lines.push("Press Enter to confirm.".to_string());
